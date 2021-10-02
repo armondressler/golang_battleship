@@ -2,7 +2,7 @@ package board
 
 import (
 	"fmt"
-	"i2go/battleship/ship"
+	"golang_battleship/ship"
 	"testing"
 )
 

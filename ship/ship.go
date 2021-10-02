@@ -17,6 +17,11 @@ type structureUnit struct {
 	healthy bool
 }
 
+type Ship struct {
+	class     class
+	structure []structureUnit
+}
+
 type class struct {
 	name   string
 	length int
@@ -37,21 +42,22 @@ var orientationMap = map[string]orientation{
 	"w": {-1, 0},
 }
 
-type Ship struct {
-	class           class
-	sternCoordinate coordinate
-	orientation     orientation
-	structure       []structureUnit
-}
-
 func NewShip(className string, x int, y int, orientation string) *Ship {
-	s := &Ship{class{className, lengthMap[className]}, coordinate{x, y}, orientationMap[orientation], []structureUnit{}}
+	s := &Ship{class{className, lengthMap[className]}, []structureUnit{}}
+	o := orientationMap[orientation]
 	for i := 0; i < s.Length(); i++ {
-		x := s.sternCoordinate.x + i*int(s.orientation.x)
-		y := s.sternCoordinate.y + i*int(s.orientation.y)
+		x := x + i*int(o.x)
+		y := y + i*int(o.y)
 		s.structure = append(s.structure, structureUnit{c: coordinate{x, y}, healthy: true})
 	}
 	return s
+}
+
+func OrientationFromString(orientationString string) (orientation, error) {
+	if o, ok := orientationMap[orientationString]; ok {
+		return o, nil
+	}
+	return orientation{0, 0}, fmt.Errorf("cannot convert orientation string: %s", orientationString)
 }
 
 func (coordinate coordinate) String() string {
@@ -75,7 +81,7 @@ func (o orientation) String() string {
 }
 
 func (ship Ship) String() string {
-	return fmt.Sprintf("%v (Stern: %v, Heading: %v, Length: %d, Hits: %d)", ship.class.name, ship.SternCoordinate().String(), ship.orientation.String(), ship.Length(), ship.Hits())
+	return fmt.Sprintf("%v (Stern: %v, Heading: %v, Length: %d, Hits: %d)", ship.class.name, ship.SternCoordinate().String(), ship.Orientation().String(), ship.Length(), ship.Hits())
 }
 
 func (ship Ship) Length() int {
@@ -85,20 +91,29 @@ func (ship Ship) Length() int {
 func (ship Ship) Coordinates() []coordinate {
 	var retval = []coordinate{}
 	for i := 0; i < ship.Length(); i++ {
-		x := ship.sternCoordinate.x + i*int(ship.orientation.x)
-		y := ship.sternCoordinate.y + i*int(ship.orientation.y)
+		x := ship.SternCoordinate().x + i*int(ship.Orientation().x)
+		y := ship.SternCoordinate().y + i*int(ship.Orientation().y)
 		retval = append(retval, coordinate{x, y})
 	}
 	return retval
 }
 
 func (ship Ship) BowCoordinate() coordinate {
-	return coordinate{ship.sternCoordinate.x + ship.Length()*int(ship.orientation.x),
-		ship.sternCoordinate.y + ship.Length()*int(ship.orientation.y)}
+	return ship.structure[len(ship.structure)-1].c
 }
 
 func (ship Ship) SternCoordinate() coordinate {
-	return coordinate{ship.sternCoordinate.x, ship.sternCoordinate.y}
+	return ship.structure[0].c
+}
+
+func (ship Ship) Orientation() orientation {
+	if ship.Length() < 2 {
+		//default to something?
+		return orientation{1, 0}
+	}
+	x := ship.structure[1].c.x - ship.SternCoordinate().x
+	y := ship.structure[1].c.y - ship.SternCoordinate().y
+	return orientation{int8(x), int8(y)}
 }
 
 func (ship Ship) Collides(otherShip Ship) bool {
