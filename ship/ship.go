@@ -25,6 +25,15 @@ type Ship struct {
 type class struct {
 	name   string
 	length int
+	symbol rune
+}
+
+var symbolMap = map[string]rune{
+	"Submarine": 'S',
+	"Frigate":   'F',
+	"Destroyer": 'D',
+	"Cruiser":   'C',
+	"Carrier":   'T',
 }
 
 var lengthMap = map[string]int{
@@ -43,7 +52,7 @@ var orientationMap = map[string]orientation{
 }
 
 func NewShip(className string, x int, y int, orientation string) *Ship {
-	s := &Ship{class{className, lengthMap[className]}, []structureUnit{}}
+	s := &Ship{class{className, lengthMap[className], symbolMap[className]}, []structureUnit{}}
 	o := orientationMap[orientation]
 	for i := 0; i < s.Length(); i++ {
 		x := x + i*int(o.x)
@@ -62,6 +71,14 @@ func OrientationFromString(orientationString string) (orientation, error) {
 
 func (coordinate coordinate) String() string {
 	return fmt.Sprintf("x:%d/y:%d", coordinate.x, coordinate.y)
+}
+
+func (coordinate coordinate) X() int {
+	return coordinate.x
+}
+
+func (coordinate coordinate) Y() int {
+	return coordinate.y
 }
 
 func (o orientation) String() string {
@@ -86,6 +103,10 @@ func (ship Ship) String() string {
 
 func (ship Ship) Length() int {
 	return ship.class.length
+}
+
+func (ship Ship) Symbol() rune {
+	return ship.class.symbol
 }
 
 func (ship Ship) Coordinates() []coordinate {

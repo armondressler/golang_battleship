@@ -3,14 +3,24 @@ package board
 import (
 	"fmt"
 	"golang_battleship/ship"
+	"golang_battleship/weapon"
 	"io"
 )
 
 type Board struct {
-	x, y              int16
-	ships             []ship.Ship
-	maxShipsPerPlayer int8
-	maxPlayers        int8
+	x, y     int
+	ships    []ship.Ship
+	impacts  []impact
+	maxShips int8
+}
+
+type impact struct {
+	x, y   int
+	weapon weapon.Exploder
+}
+
+type coordinate struct {
+	x, y int
 }
 
 func (board Board) size() int64 {
@@ -18,11 +28,43 @@ func (board Board) size() int64 {
 }
 
 func (board Board) String() string {
-	return "fubar"
+	return "+fu"
 }
 
 func (board Board) draw(writer io.Writer) {
+	shipArray := board.unpackShips()
+	impactArray := board.unpackImpacts()
+	for y := board.y; y >= 0; y-- {
+		for x := 0; x < int(board.x); x++ {
+			if symbol, ok := shipArray[coordinate{x, y}]; ok {
+				writer.Write([]byte(string(symbol)))
+			} else if symbol, ok := impactArray[coordinate{x, y}]; ok {
+				writer.Write([]byte(string(symbol)))
+			} else {
+				writer.Write([]byte(string('#')))
+			}
+			writer.Write([]byte(string(' ')))
+		}
+		io.WriteString(writer, "\n")
+	}
+}
 
+func (board Board) unpackShips() map[coordinate]rune {
+	shipArray := make(map[coordinate]rune)
+	for _, ship := range board.ships {
+		for _, c := range ship.Coordinates() {
+			shipArray[coordinate{c.X(), c.Y()}] = ship.Symbol()
+		}
+	}
+	return shipArray
+}
+
+func (board Board) unpackImpacts() map[coordinate]rune {
+	impactArray := make(map[coordinate]rune)
+	for _, impact := range board.impacts {
+		impactArray[coordinate{impact.x, impact.y}] = impact.weapon.Symbol()
+	}
+	return impactArray
 }
 
 func (board Board) checkCollision(ship ship.Ship) *ship.Ship {

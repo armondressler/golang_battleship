@@ -6,11 +6,12 @@ type coordinate struct {
 
 type Exploder interface {
 	Explode(coordinate) []coordinate
+	Symbol() rune
 }
 
 type weapon struct {
 	name   string
-	symbol string
+	symbol rune
 }
 
 type simpleTorpedo struct {
@@ -19,6 +20,10 @@ type simpleTorpedo struct {
 
 type seaMine struct {
 	weapon
+}
+
+func (weapon weapon) Symbol() rune {
+	return weapon.symbol
 }
 
 func (s seaMine) Explode(c coordinate) []coordinate {
