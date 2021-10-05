@@ -1,6 +1,7 @@
 package board
 
 import (
+	"bytes"
 	"fmt"
 	"golang_battleship/ship"
 	"golang_battleship/weapon"
@@ -23,12 +24,14 @@ type coordinate struct {
 	x, y int
 }
 
-func (board Board) size() int64 {
+func (board Board) Size() int64 {
 	return int64(board.x * board.y)
 }
 
 func (board Board) String() string {
-	return "+fu"
+	var buf bytes.Buffer
+	board.draw(&buf)
+	return buf.String()
 }
 
 func (board Board) draw(writer io.Writer) {
@@ -76,7 +79,7 @@ func (board Board) checkCollision(ship ship.Ship) *ship.Ship {
 	return nil
 }
 
-func (board *Board) deployShip(ship ship.Ship) error {
+func (board *Board) DeployShip(ship ship.Ship) error {
 	if collidingShip := board.checkCollision(ship); collidingShip != nil {
 		return fmt.Errorf("collision with ship %s detected", collidingShip)
 	}
