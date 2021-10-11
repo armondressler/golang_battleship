@@ -1,6 +1,7 @@
 package board
 
 import (
+	"bytes"
 	"fmt"
 	"golang_battleship/ship"
 	"golang_battleship/weapon"
@@ -28,7 +29,9 @@ func (board Board) size() int64 {
 }
 
 func (board Board) String() string {
-	return "+fu"
+	var b bytes.Buffer
+	board.draw(&b)
+	return b.String()
 }
 
 func (board Board) draw(writer io.Writer) {
@@ -36,9 +39,9 @@ func (board Board) draw(writer io.Writer) {
 	impactArray := board.unpackImpacts()
 	for y := board.y; y >= 0; y-- {
 		for x := 0; x < int(board.x); x++ {
-			if symbol, ok := shipArray[coordinate{x, y}]; ok {
+			if symbol, ok := impactArray[coordinate{x, y}]; ok {
 				writer.Write([]byte(string(symbol)))
-			} else if symbol, ok := impactArray[coordinate{x, y}]; ok {
+			} else if symbol, ok := shipArray[coordinate{x, y}]; ok {
 				writer.Write([]byte(string(symbol)))
 			} else {
 				writer.Write([]byte(string('#')))
