@@ -29,15 +29,9 @@ func (board Board) Size() int64 {
 }
 
 func (board Board) String() string {
-<<<<<<< HEAD
-	var b bytes.Buffer
-	board.draw(&b)
-	return b.String()
-=======
 	var buf bytes.Buffer
 	board.draw(&buf)
 	return buf.String()
->>>>>>> 843fb0801ef9b864deb99ae31571eee7e06ec37d
 }
 
 func (board Board) draw(writer io.Writer) {
