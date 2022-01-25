@@ -4,12 +4,16 @@ import (
 	"flag"
 	"fmt"
 	"net"
+	"os"
+
+	log "github.com/sirupsen/logrus"
 )
 
 type cmdFlags struct {
-	host     string
-	port     int
-	loglevel int
+	Host     string
+	Port     int
+	Loglevel int
+	Server   bool
 }
 
 func validateLoglevel(loglevel int) error {
@@ -33,14 +37,23 @@ func validateHost(host string) error {
 	return nil
 }
 
+func setLogger(loglevel int) {
+	log.SetFormatter(&log.JSONFormatter{})
+	log.SetOutput(os.Stdout)
+	log.SetLevel(log.Level(loglevel + 2)) //skip panic and fatal level, start at error
+}
+
 func ParseCmdFlags() cmdFlags {
 	var host string
 	var port int
 	var loglevel int
+	var server bool
 
-	flag.StringVar(&host, "host", "0.0.0.0", "Interface to listen on.")
-	flag.IntVar(&port, "port", 80, "Port to listen on.")
-	flag.IntVar(&loglevel, "loglevel", 0, "Log verbosity (0 (fatal) - 3 (debug)")
+	flag.StringVar(&host, "host", "0.0.0.0", "Server address (or interface for server mode)")
+	flag.IntVar(&port, "port", 80, "Port to connect to (or to listen on for server mode)")
+	flag.IntVar(&loglevel, "loglevel", 0, "Log verbosity (0 (error) - 3 (debug)")
+	flag.BoolVar(&server, "server", false, "Run as server")
 	flag.Parse()
-	return cmdFlags{host, port, loglevel}
+	setLogger(loglevel)
+	return cmdFlags{host, port, loglevel, server}
 }
