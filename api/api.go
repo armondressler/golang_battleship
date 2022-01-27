@@ -1,20 +1,69 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
+
+	"golang_battleship/player"
 	"net/http"
 
-	"github.com/gorilla/websocket"
+	ws "github.com/gorilla/websocket"
 	log "github.com/sirupsen/logrus"
 )
 
+const VERSION = "1.0"
+
 var apiHandlerMap = map[string]http.HandlerFunc{
-	"/echo":  echo,
-	"/hello": hello,
+	"/echo":     echo,
+	"/hello":    hello,
+	"/home":     home,
+	"/register": register,
+	"/version":  version,
+}
+
+type RegisterPlayer struct {
+	Name string `json:"name"`
+}
+
+func version(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	retval, _ := json.Marshal(VERSION)
+	w.Write(retval)
+}
+
+func register(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	decoder := json.NewDecoder(r.Body)
+	var p RegisterPlayer
+	err := decoder.Decode(&p)
+	player.NewPlayer(p.Name)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+func home(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	var playerlist []string
+	for _, p := range player.Players {
+		playerlist = append(playerlist, p.String())
+	}
+	retval, err := json.Marshal(playerlist)
+	log.Info("PLAYERLIST: ", string(retval))
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.Write(retval)
 }
 
 func hello(w http.ResponseWriter, r *http.Request) {
-	upgrader := websocket.Upgrader{}
+	upgrader := ws.Upgrader{}
 	c, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Println("upgrade:", err)
@@ -29,7 +78,7 @@ func hello(w http.ResponseWriter, r *http.Request) {
 }
 
 func echo(w http.ResponseWriter, r *http.Request) {
-	upgrader := websocket.Upgrader{}
+	upgrader := ws.Upgrader{}
 	c, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Println("upgrade:", err)
@@ -52,7 +101,7 @@ func echo(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func Serve(addr string, port int, loglevel int) {
+func Serve(addr string, port int) {
 	for urlPath, handlerFunction := range apiHandlerMap {
 		log.Info(fmt.Sprintf("Launching handler for %s", urlPath))
 		http.HandleFunc(urlPath, handlerFunction)
