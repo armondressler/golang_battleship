@@ -4,6 +4,8 @@ import (
 	"github.com/google/uuid"
 )
 
+var Players []Player
+
 type Player struct {
 	name string
 	id   uuid.UUID
@@ -15,5 +17,7 @@ func (player *Player) String() string {
 
 func NewPlayer(name string) Player {
 	id := uuid.New()
-	return Player{name, id}
+	p := Player{name, id}
+	Players = append(Players, p)
+	return p
 }
