@@ -6,13 +6,11 @@ import (
 	"golang_battleship/cmd"
 )
 
-const VERSION = "1.0"
-
 func main() {
 	configFlags := cmd.ParseCmdFlags()
 	if configFlags.Server {
-		api.Serve(configFlags.Host, configFlags.Port, configFlags.Loglevel)
+		api.Serve(configFlags.Host, configFlags.Port)
 	} else {
-		client.Connect(configFlags.Host, configFlags.Port, configFlags.Loglevel)
+		client.Connect(configFlags.Host, configFlags.Port)
 	}
 }
