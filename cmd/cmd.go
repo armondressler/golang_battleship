@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"crypto/rand"
 	"flag"
 	"fmt"
 	"net"
@@ -10,10 +11,11 @@ import (
 )
 
 type cmdFlags struct {
-	Host     string
-	Port     int
-	Loglevel int
-	Server   bool
+	Host          string
+	Port          int
+	Loglevel      int
+	Server        bool
+	JwtSigningKey []byte
 }
 
 func validateLoglevel(loglevel int) error {
@@ -43,11 +45,29 @@ func setLogger(loglevel int) {
 	log.SetLevel(log.Level(loglevel + 2)) //skip panic and fatal level, start at error
 }
 
+func GetJwtSigningKeyFromEnv(envkey string) ([]byte, error) {
+	e := []byte(os.Getenv(envkey))
+	if len(e) == 0 {
+		return []byte{}, fmt.Errorf("failed to get jwt signing key from env var %s, either empty or unset", envkey)
+	}
+	return e, nil
+}
+
+func GenerateJwtSigningKey(keysize int) ([]byte, error) {
+	b := make([]byte, keysize)
+	_, err := rand.Read(b)
+	if err != nil {
+		return []byte{}, err
+	}
+	return b, nil
+}
+
 func ParseCmdFlags() cmdFlags {
 	var host string
 	var port int
 	var loglevel int
 	var server bool
+	var jwtSigningKey []byte
 
 	flag.StringVar(&host, "host", "0.0.0.0", "Server address (or interface for server mode)")
 	flag.IntVar(&port, "port", 80, "Port to connect to (or to listen on for server mode)")
@@ -55,5 +75,14 @@ func ParseCmdFlags() cmdFlags {
 	flag.BoolVar(&server, "server", false, "Run as server")
 	flag.Parse()
 	setLogger(loglevel)
-	return cmdFlags{host, port, loglevel, server}
+	jwtSigningKey, err := GetJwtSigningKeyFromEnv("BATTLESHIP_JWTSIGNINGKEY")
+	if err != nil {
+		log.Warn(err)
+		jwtSigningKey, err = GenerateJwtSigningKey(32)
+		if err != nil {
+			panic(fmt.Errorf("failed to generate JWT signing key: %s", err))
+		}
+		log.Warn("generated JWT signing key: ", string(jwtSigningKey))
+	}
+	return cmdFlags{host, port, loglevel, server, jwtSigningKey}
 }

@@ -9,6 +9,11 @@ require (
 )
 
 require (
+	github.com/golang-jwt/jwt v3.2.2+incompatible // indirect
+	github.com/gorilla/mux v1.8.0 // indirect
+)
+
+require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/steinfletcher/apitest v1.5.11
 	golang.org/x/sys v0.0.0-20191026070338-33540a1f6037 // indirect
