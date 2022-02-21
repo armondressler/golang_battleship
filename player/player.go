@@ -15,7 +15,7 @@ type PlayerList []*Player
 
 type Player struct {
 	Name             string
-	PasswordBCrypt   string
+	PasswordHash     string
 	ID               uuid.UUID
 	RegistrationDate time.Time
 	Wins, Losses     int
@@ -56,7 +56,7 @@ func GetByName(playername string) (Player, error) {
 	return Player{}, fmt.Errorf("player name %s doesnt exist", playername)
 }
 
-func NewPlayer(name string, passwordBCrypt string) (*Player, error) {
+func NewPlayer(name string, passwordHash string) (*Player, error) {
 	r := regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9\-_]{0,31}$`)
 	if !r.MatchString(name) {
 		return &Player{}, fmt.Errorf("player name %s doesn't meet requirements (starts with a letter, "+
@@ -69,7 +69,7 @@ func NewPlayer(name string, passwordBCrypt string) (*Player, error) {
 	}
 	id := uuid.New()
 	now := time.Now().UTC()
-	p := Player{name, passwordBCrypt, id, now, 0, 0}
+	p := Player{name, passwordHash, id, now, 0, 0}
 	AllPlayersMap[name] = &p
 	AllPlayersList = append(AllPlayersList, &p)
 	sort.Sort(AllPlayersList)

@@ -1,18 +1,27 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"golang_battleship/player"
 	"net/http"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
 
 	"github.com/golang-jwt/jwt"
 	log "github.com/sirupsen/logrus"
 )
 
 type LoginBody struct {
-	Playername     string `json:"Playername"`
-	PasswordBCrypt string `json:"PasswordBCrypt"`
+	Playername string `json:"playername"`
+	Password   string `json:"password"`
+}
+
+func hashPassword(password string, rehashCount int) (string, error) {
+	byteHash, err := bcrypt.GenerateFromPassword([]byte(password), rehashCount)
+	return string(byteHash), err
 }
 
 func createToken(signingKey []byte, user string, expiresInSeconds int) (string, error) {
@@ -25,23 +34,32 @@ func createToken(signingKey []byte, user string, expiresInSeconds int) (string, 
 	return s, err
 }
 
+func getPlayerFromContext(r *http.Request) (player.Player, error) {
+	var playernameKey Playername = "playername"
+	c := r.Context()
+	return player.GetByName(c.Value(playernameKey).(string))
+}
+
 func Login(w http.ResponseWriter, r *http.Request, jwtsigningkey []byte) {
 	var b LoginBody
 	decoder := json.NewDecoder(r.Body)
 	err := decoder.Decode(&b)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
+		w.WriteHeader(http.StatusUnauthorized)
 		w.Write([]byte(err.Error()))
+		return
 	}
 	p, err := player.GetByName(b.Playername)
 	if err != nil {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
-	if p.PasswordBCrypt != b.PasswordBCrypt {
+
+	if err := bcrypt.CompareHashAndPassword([]byte(p.PasswordHash), []byte(b.Password)); err != nil {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
+
 	t, err := createToken(jwtsigningkey, b.Playername, 60*60)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -57,5 +75,37 @@ func Login(w http.ResponseWriter, r *http.Request, jwtsigningkey []byte) {
 	log.Info(c)
 	http.SetCookie(w, &c)
 	w.WriteHeader(http.StatusAccepted)
+}
 
+func (jwtm JWTMiddleware) CheckJWT(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := r.Cookie(JWT_COOKIE_NAME)
+		if err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		log.Info(fmt.Sprintf("Checking token %s from cookie %s", c.Value, c.Name))
+		t, err := jwt.ParseWithClaims(c.Value, &jwt.StandardClaims{}, func(token *jwt.Token) (interface{}, error) {
+			return jwtm.jwtSigningKey, nil
+		})
+		if err != nil {
+			log.Warn("malformed token, ", err)
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		if !t.Valid {
+			log.Warn("invalid token")
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		claims, ok := t.Claims.(*jwt.StandardClaims)
+		if !ok {
+			log.Warn("malformed claims")
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		var playernameKey Playername = "playername" //because context.WithValue told me so
+		ctx := context.WithValue(r.Context(), playernameKey, claims.Subject)
+		h.ServeHTTP(w, r.Clone(ctx))
+	})
 }

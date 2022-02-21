@@ -12,7 +12,7 @@ type Board struct {
 	x, y     int
 	ships    []ship.Ship
 	impacts  []impact
-	maxShips int
+	MaxShips int
 }
 
 type impact struct {
@@ -28,8 +28,12 @@ func NewBoard(x, y int, maxships int) Board {
 	return Board{x, y, []ship.Ship{}, []impact{}, maxships}
 }
 
-func (board Board) Size() int64 {
-	return int64(board.x * board.y)
+func (board Board) Size() int {
+	return board.x * board.y
+}
+
+func (board Board) Dimensions() (int, int) {
+	return board.x, board.y
 }
 
 func (board Board) String() string {

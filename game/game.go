@@ -47,6 +47,8 @@ const (
 	DefaultDescription     = "Join Me"
 )
 
+const ValidGameIDRegex = "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+
 var AllGames GameList
 
 var GameStateMap = map[GameState]string{
@@ -62,6 +64,15 @@ func (p participant) String() string {
 	return p.player.Name
 }
 
+func GetByUUID(uuid string) (Game, error) {
+	for _, g := range AllGames {
+		if g.ID.String() == uuid {
+			return g, nil
+		}
+	}
+	return Game{}, fmt.Errorf("no game found for uuid %s", uuid)
+}
+
 func (g Game) ListParticipants() []string {
 	retval := []string{}
 	for _, p := range g.Participants {
@@ -70,17 +81,36 @@ func (g Game) ListParticipants() []string {
 	return retval
 }
 
-func (g *Game) AddParticipant(playername string, boardsizeX, boardsizeY, maxships int) error {
-	p, err := player.GetByName(playername)
-	if err != nil {
-		return err
+func (g Game) GetBoardParameters() (int, int, int) {
+	if len(g.Participants) < 1 {
+		return DefaultBoardsizeX, DefaultBoardsizeY, DefaultMaxships
 	}
+	b := g.Participants[0].board
+	x, y := b.Dimensions()
+	return x, y, b.MaxShips
+}
+
+func (g *Game) AddParticipant(player player.Player) error {
+	if g.MaxParticipants <= len(g.Participants) {
+		return fmt.Errorf("game with id %s has reached max participants (%d/%d)", g.ID, len(g.Participants), g.MaxParticipants)
+	}
+	boardx, boardy, maxShips := g.GetBoardParameters()
 	g.Participants = append(g.Participants, participant{
-		p,
+		player,
 		[]ship.Ship{},
-		board.NewBoard(boardsizeX, boardsizeY, maxships),
+		board.NewBoard(boardx, boardy, maxShips),
 	})
 	return nil
+}
+
+func (g *Game) RemoveParticipant(player player.Player) error {
+	for i, p := range g.Participants {
+		if p.player.Name == player.Name {
+			g.Participants = append(g.Participants[:i], g.Participants[i+1:]...)
+			return nil
+		}
+	}
+	return fmt.Errorf("no participant with name %s found for game with id %s", player.Name, g.ID)
 }
 
 func NewGame(boardsizeX, boardsizeY, maxships int, description string, maxparticipants int, playernames ...string) (Game, error) {

@@ -2,8 +2,15 @@ package api
 
 import (
 	"golang_battleship/cmd"
+	"golang_battleship/game"
+	"golang_battleship/player"
+	"net/http"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/gorilla/mux"
+	"github.com/steinfletcher/apitest"
 )
 
 func TestGenerateJwtSigningKey(t *testing.T) {
@@ -39,7 +46,7 @@ func TestGenerateJwtSigningKey(t *testing.T) {
 	}
 }
 
-func Test_createToken(t *testing.T) {
+func TestCreateToken(t *testing.T) {
 	type args struct {
 		signingKey       []byte
 		user             string
@@ -74,4 +81,86 @@ func Test_createToken(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestLogin(t *testing.T) {
+	jwtSigningKey := []byte("abcdefg")
+	finish := make(chan struct{})
+	jwtm := JWTMiddleware{jwtSigningKey: jwtSigningKey, loginHandler: Login}
+	defaultRouter := mux.NewRouter()
+	needsAuthRouter := defaultRouter.Path("/games").Subrouter()
+	needsAuthRouter.Use(jwtm.CheckJWT)
+	defaultRouter.Path("/login").Methods("POST").Handler(jwtm)
+	needsAuthRouter.Methods("GET").HandlerFunc(ListGames)
+	passwordHashRudolf, _ := hashPassword("passwordrudolf", PASSWORD_REHASH_COUNT)
+	player.NewPlayer("Rudolf", passwordHashRudolf)
+	passwordHashDagobert, _ := hashPassword("passworddagobert", PASSWORD_REHASH_COUNT)
+	player.NewPlayer("Dagobert", passwordHashDagobert)
+	game.NewGame(12, 12, 6, "New Game", 2, "Rudolf", "Dagobert")
+
+	go func() {
+		if err := http.ListenAndServe("127.0.0.1:8080", defaultRouter); err != nil {
+			panic(err)
+		}
+	}()
+
+	go func() {
+		cli := &http.Client{
+			Timeout: time.Second * 1,
+		}
+		apitest.New().
+			EnableNetworking(cli).
+			Post("http://127.0.0.1:8080/login").
+			Body("{\"playername\":\"Rudolf\",\"password\":\"BADPASSWORD\"}").
+			Expect(t).
+			Status(http.StatusUnauthorized).
+			End()
+
+		apitest.New().
+			EnableNetworking(cli).
+			Post("http://127.0.0.1:8080/login").
+			Body("{\"playername\":\"Rudolf\"}").
+			Expect(t).
+			Status(http.StatusUnauthorized).
+			End()
+
+		apitest.New().
+			EnableNetworking(cli).
+			Post("http://127.0.0.1:8080/login").
+			Body("{\"playername\":\"Rudolf\",\"password\":\"\x00\"}").
+			Expect(t).
+			Status(http.StatusUnauthorized).
+			End()
+
+		loginresponse := apitest.New().
+			EnableNetworking(cli).
+			Post("http://127.0.0.1:8080/login").
+			Body("{\"playername\":\"Rudolf\",\"password\":\"passwordrudolf\"}").
+			Expect(t).
+			Status(http.StatusAccepted).
+			CookiePresent(JWT_COOKIE_NAME).
+			End().Response
+
+		var jwtCookie string
+		for _, c := range loginresponse.Cookies() {
+			if c.Name == JWT_COOKIE_NAME {
+				jwtCookie = c.Value
+			}
+		}
+		if jwtCookie == "" {
+			t.Errorf("no cookie was set after logging in, expected cookie with name %s", JWT_COOKIE_NAME)
+			t.Fail()
+		}
+
+		apitest.New().
+			EnableNetworking(cli).
+			Get("http://127.0.0.1:8080/games").
+			Cookie(JWT_COOKIE_NAME, jwtCookie).
+			Expect(t).
+			Status(http.StatusOK).
+			End()
+
+		finish <- struct{}{}
+	}()
+	<-finish
 }

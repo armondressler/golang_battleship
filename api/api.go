@@ -9,18 +9,22 @@ import (
 	"golang_battleship/player"
 	"net/http"
 
-	"github.com/golang-jwt/jwt"
 	"github.com/gorilla/mux"
 	ws "github.com/gorilla/websocket"
 	log "github.com/sirupsen/logrus"
 )
 
-const VERSION = "1.0"
-const JWT_COOKIE_NAME = "battleship_jwt"
+const (
+	VERSION               = "1.0"
+	JWT_COOKIE_NAME       = "battleship_jwt"
+	PASSWORD_REHASH_COUNT = 10
+)
+
+type Playername string
 
 type RegisterPlayerBody struct {
-	Playername     string `json:"name"`
-	PasswordBCrypt string `json:"passwordbcrypt"`
+	Playername string `json:"name"`
+	Password   string `json:"password"`
 }
 
 type CreateGameBody struct {
@@ -52,7 +56,7 @@ func RegisterPlayer(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	if _, err := player.NewPlayer(b.Playername, b.PasswordBCrypt); err != nil {
+	if _, err := player.NewPlayer(b.Playername, b.Password); err != nil {
 		resp, _ := json.Marshal(err)
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write(resp)
@@ -63,38 +67,35 @@ func RegisterPlayer(w http.ResponseWriter, r *http.Request) {
 }
 
 func JoinGame(w http.ResponseWriter, r *http.Request) {
-	//gonna need some session handling ...
+	p, err := getPlayerFromContext(r)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	rvars := mux.Vars(r)
+	gameID, ok := rvars["id"]
+	if !ok {
+		w.Write([]byte("no game id provided in request path"))
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	g, err := game.GetByUUID(gameID)
+	if err != nil {
+		w.Write([]byte(fmt.Sprintf("no game found for id %s", gameID)))
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	err = g.AddParticipant(p)
+	if err != nil {
+		w.Write([]byte(err.Error()))
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
 }
 
 func LeaveGame(w http.ResponseWriter, r *http.Request) {
 
-}
-
-func CheckJWT(h http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		c, err := r.Cookie(JWT_COOKIE_NAME)
-		if err != nil {
-			w.WriteHeader(http.StatusUnauthorized)
-			http.Redirect(w, r, "/login", http.StatusTemporaryRedirect)
-			return
-		}
-		t, err := jwt.ParseWithClaims(c.Value, jwt.StandardClaims{}, nil)
-		if err != nil || !t.Valid {
-			log.Warn("Malformed or invalid token, ", err)
-			w.WriteHeader(http.StatusUnauthorized)
-			http.Redirect(w, r, "/login", http.StatusTemporaryRedirect)
-			return
-		}
-		claims, ok := t.Claims.(jwt.MapClaims)
-		if !ok {
-			log.Warn("Malformed claims")
-			w.WriteHeader(http.StatusUnauthorized)
-			http.Redirect(w, r, "/login", http.StatusTemporaryRedirect)
-			return
-		}
-		log.Warn("SUBJECT IS: ", claims["Subject"])
-		h.ServeHTTP(w, r)
-	})
 }
 
 func CreateGame(w http.ResponseWriter, r *http.Request) {
@@ -156,6 +157,8 @@ func Scoreboard(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+	var playernameKey Playername = "playername"
+	log.Info("SUBJECT OF THIS REQUEST IS: ", r.Context().Value(playernameKey))
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(retval)
 }
@@ -184,23 +187,27 @@ func echo(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-type JWTSingingKeyHandler struct {
-	JWTSingingKey []byte
-	Handler       func(w http.ResponseWriter, r *http.Request, jwtSigningKey []byte)
+type JWTMiddleware struct {
+	jwtSigningKey []byte
+	loginHandler  func(w http.ResponseWriter, r *http.Request, jwtSigningKey []byte)
 }
 
-func (h JWTSingingKeyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	h.Handler(w, r, h.JWTSingingKey)
+func (jwtm JWTMiddleware) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	jwtm.loginHandler(w, r, jwtm.jwtSigningKey)
 }
 
 func Serve(addr string, port int, jwtSigningKey []byte) {
-	r := mux.NewRouter()
-	needsAuth := mux.NewRouter()
-	needsAuth.Use(CheckJWT)
+	jwtm := JWTMiddleware{jwtSigningKey: jwtSigningKey, loginHandler: Login}
+	defaultRouter := mux.NewRouter()
+	needsAuthRouter := defaultRouter.NewRoute().Subrouter()
+	needsAuthRouter.Use(jwtm.CheckJWT)
+	pw, _ := hashPassword("armon", PASSWORD_REHASH_COUNT)
+	player.NewPlayer("armon", pw)
+	defaultRouter.Path("/login").Methods("POST").Handler(jwtm)
 
-	r.Path("/players").Methods("POST").HandlerFunc(RegisterPlayer)
-	r.Path("/players").Methods("GET").HandlerFunc(Scoreboard)
-	r.Path("/login").Methods("POST").Handler(JWTSingingKeyHandler{JWTSingingKey: jwtSigningKey, Handler: Login})
-	needsAuth.Path("/games").Methods("GET").HandlerFunc(ListGames)
-	log.Fatal(http.ListenAndServe(addr+":"+fmt.Sprint(port), r))
+	needsAuthRouter.Path("/players").Methods("POST").HandlerFunc(RegisterPlayer)
+	needsAuthRouter.Path("/players").Methods("GET").HandlerFunc(Scoreboard)
+	needsAuthRouter.Path("/games").Methods("GET").HandlerFunc(ListGames)
+	needsAuthRouter.Path(fmt.Sprintf("/games/{id:%s}/join", game.ValidGameIDRegex)).HandlerFunc(JoinGame)
+	log.Fatal(http.ListenAndServe(addr+":"+fmt.Sprint(port), defaultRouter))
 }
