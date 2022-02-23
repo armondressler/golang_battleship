@@ -11,5 +11,6 @@ func TestNewGame(t *testing.T) {
 	maxships := 6
 	p1, _ := player.NewPlayer("Rudolf", "")
 	p2, _ := player.NewPlayer("Dagobert", "")
-	NewGame(x, y, maxships, "New Game", 2, p1.Name, p2.Name)
+	g, _ := NewGame(x, y, maxships, "New Game", 2, p1.Name, p2.Name)
+	t.Error(g.String())
 }
