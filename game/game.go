@@ -1,10 +1,10 @@
 package game
 
 import (
+	"encoding/json"
 	"fmt"
 	"golang_battleship/board"
 	"golang_battleship/player"
-	"golang_battleship/ship"
 	"time"
 
 	"github.com/google/uuid"
@@ -16,17 +16,17 @@ type GameList []Game
 type GameState int
 
 type Game struct {
-	Participants    []participant
-	ID              uuid.UUID
-	State           GameState
-	Description     string
-	CreationDate    time.Time
-	MaxParticipants int
+	Participants    []participant         `json:"participants"`
+	ID              uuid.UUID             `json:"-"`
+	State           GameState             `json:"state"`
+	Description     string                `json:"description"`
+	CreationDate    time.Time             `json:"creation_date"`
+	MaxParticipants int                   `json:"max_participants"`
+	BoardParameters board.BoardParameters `json:"board_parameters"`
 }
 
 type participant struct {
 	player player.Player
-	ship   []ship.Ship
 	board  board.Board
 }
 
@@ -64,6 +64,10 @@ func (p participant) String() string {
 	return p.player.Name
 }
 
+func (p participant) MarshalJSON() ([]byte, error) {
+	return json.Marshal(p.String())
+}
+
 func GetByUUID(uuid string) (Game, error) {
 	for _, g := range AllGames {
 		if g.ID.String() == uuid {
@@ -71,6 +75,27 @@ func GetByUUID(uuid string) (Game, error) {
 		}
 	}
 	return Game{}, fmt.Errorf("no game found for uuid %s", uuid)
+}
+
+func (g GameState) String() string {
+	return GameStateMap[g]
+}
+
+func (g GameState) MarshalJSON() ([]byte, error) {
+	return json.Marshal(g.String())
+}
+
+func (g Game) String() string {
+	json_map := map[string]interface{}{
+		"participants":     g.ListParticipants(),
+		"max_participants": g.MaxParticipants,
+		"state":            GameStateMap[g.State],
+		"description":      g.Description,
+		"creation_date":    g.CreationDate,
+		"board_parameters": g.BoardParameters,
+	}
+	s, _ := json.Marshal(json_map)
+	return string(s[:])
 }
 
 func (g Game) ListParticipants() []string {
@@ -81,24 +106,13 @@ func (g Game) ListParticipants() []string {
 	return retval
 }
 
-func (g Game) GetBoardParameters() (int, int, int) {
-	if len(g.Participants) < 1 {
-		return DefaultBoardsizeX, DefaultBoardsizeY, DefaultMaxships
-	}
-	b := g.Participants[0].board
-	x, y := b.Dimensions()
-	return x, y, b.MaxShips
-}
-
 func (g *Game) AddParticipant(player player.Player) error {
 	if g.MaxParticipants <= len(g.Participants) {
 		return fmt.Errorf("game with id %s has reached max participants (%d/%d)", g.ID, len(g.Participants), g.MaxParticipants)
 	}
-	boardx, boardy, maxShips := g.GetBoardParameters()
 	g.Participants = append(g.Participants, participant{
 		player,
-		[]ship.Ship{},
-		board.NewBoard(boardx, boardy, maxShips),
+		board.NewBoard(g.BoardParameters),
 	})
 	return nil
 }
@@ -127,18 +141,15 @@ func NewGame(boardsizeX, boardsizeY, maxships int, description string, maxpartic
 		maxparticipants = DefaultMaxParticipants
 	}
 	gameuuid := uuid.New()
-	var participants []participant
-	for _, playername := range playernames {
-		participants = append(participants, participant{
-			*player.AllPlayersMap[playername],
-			[]ship.Ship{},
-			board.NewBoard(
-				boardsizeX,
-				boardsizeY,
-				maxships)})
+	g := Game{[]participant{}, gameuuid, StateCreated, description, time.Now(), maxparticipants, board.BoardParameters{
+		SizeX: boardsizeX, SizeY: boardsizeY, MaxShips: maxships},
 	}
-	now := time.Now()
-	g := Game{participants, gameuuid, StateCreated, description, now, maxparticipants}
+
+	for _, playername := range playernames {
+		p, _ := player.GetByName(playername)
+		g.AddParticipant(p)
+	}
+
 	AllGames = append(AllGames, g)
 	log.Info(fmt.Sprintf("Created new game %s with max. participants %d", gameuuid, maxparticipants))
 	return g, nil
