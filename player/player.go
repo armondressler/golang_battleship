@@ -14,7 +14,7 @@ type PlayerMap map[string]*Player
 type PlayerList []*Player
 
 type Player struct {
-	Name             string
+	Name             string `json:"name"`
 	PasswordHash     string
 	ID               uuid.UUID
 	RegistrationDate time.Time
@@ -36,6 +36,10 @@ func (l PlayerList) Swap(i, j int) {
 var AllPlayersMap = make(PlayerMap)
 
 var AllPlayersList PlayerList
+
+func (p Player) String() string {
+	return p.Name
+}
 
 func (p *Player) ScoreWin() {
 	p.Wins += 1
