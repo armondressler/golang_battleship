@@ -9,10 +9,9 @@ import (
 )
 
 type Board struct {
-	x, y     int
-	ships    []ship.Ship
-	impacts  []impact
-	MaxShips int
+	BoardParameters
+	ships   []ship.Ship
+	impacts []impact
 }
 
 type impact struct {
@@ -24,16 +23,22 @@ type coordinate struct {
 	x, y int
 }
 
-func NewBoard(x, y int, maxships int) Board {
-	return Board{x, y, []ship.Ship{}, []impact{}, maxships}
+type BoardParameters struct {
+	SizeX    int `json:"size_x"`
+	SizeY    int `json:"size_y"`
+	MaxShips int `json:"max_ships"`
+}
+
+func NewBoard(bp BoardParameters) Board {
+	return Board{bp, []ship.Ship{}, []impact{}}
 }
 
 func (board Board) Size() int {
-	return board.x * board.y
+	return board.BoardParameters.SizeX * board.BoardParameters.SizeY
 }
 
 func (board Board) Dimensions() (int, int) {
-	return board.x, board.y
+	return board.BoardParameters.SizeX, board.BoardParameters.SizeY
 }
 
 func (board Board) String() string {
@@ -45,8 +50,8 @@ func (board Board) String() string {
 func (board Board) draw(writer io.Writer) {
 	shipArray := board.unpackShips()
 	impactArray := board.unpackImpacts()
-	for y := board.y; y >= 0; y-- {
-		for x := 0; x < int(board.x); x++ {
+	for y := board.BoardParameters.SizeX; y >= 0; y-- {
+		for x := 0; x < int(board.BoardParameters.SizeY); x++ {
 			if symbol, ok := impactArray[coordinate{x, y}]; ok {
 				writer.Write([]byte(string(symbol)))
 			} else if symbol, ok := shipArray[coordinate{x, y}]; ok {
