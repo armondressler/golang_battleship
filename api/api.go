@@ -3,7 +3,6 @@ package api
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"golang_battleship/game"
 	"golang_battleship/player"
@@ -127,13 +126,9 @@ func DeleteGame(w http.ResponseWriter, r *http.Request) {
 }
 
 func ListGames(w http.ResponseWriter, r *http.Request) {
-	games := make(map[string]map[string]string)
+	games := make(map[string]game.Game)
 	for _, g := range game.AllGames {
-		gamestats := map[string]string{
-			"participants": strings.Join(g.ListParticipants(), ","),
-			"state":        game.GameStateMap[g.State],
-		}
-		games[g.ID.String()] = gamestats
+		games[g.ID.String()] = g
 	}
 	if retval, err := json.Marshal(games); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -157,8 +152,6 @@ func Scoreboard(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	var playernameKey Playername = "playername"
-	log.Info("SUBJECT OF THIS REQUEST IS: ", r.Context().Value(playernameKey))
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(retval)
 }
