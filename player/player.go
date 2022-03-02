@@ -14,11 +14,12 @@ type PlayerMap map[string]*Player
 type PlayerList []*Player
 
 type Player struct {
-	Name             string `json:"name"`
-	PasswordHash     string
-	ID               uuid.UUID
-	RegistrationDate time.Time
-	Wins, Losses     int
+	Name             string    `json:"name"`
+	PasswordHash     string    `json:"-"`
+	ID               uuid.UUID `json:"id"`
+	RegistrationDate time.Time `json:"-"`
+	Wins             int       `json:"wins"`
+	Losses           int       `json:"losses"`
 }
 
 func (l PlayerList) Len() int {

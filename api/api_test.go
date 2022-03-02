@@ -13,7 +13,7 @@ import (
 	"github.com/steinfletcher/apitest"
 )
 
-func TestRegister(t *testing.T) {
+func TestRegisterPlayer(t *testing.T) {
 	finish := make(chan struct{})
 	r := mux.NewRouter()
 	r.HandleFunc("/players", Scoreboard)
@@ -132,6 +132,35 @@ func TestListGames(t *testing.T) {
 				t.Fail()
 			}
 		}
+		finish <- struct{}{}
+	}()
+	<-finish
+}
+
+func TestCreateGame(t *testing.T) {
+	finish := make(chan struct{})
+	r := mux.NewRouter()
+	r.HandleFunc("/games", CreateGame)
+
+	go func() {
+		if err := http.ListenAndServe("127.0.0.1:8080", r); err != nil {
+			panic(err)
+		}
+	}()
+
+	go func() {
+		cli := &http.Client{
+			Timeout: time.Second * 1,
+		}
+
+		apitest.New().
+			EnableNetworking(cli).
+			Post("http://127.0.0.1:8080/games").
+			Body(`{}`).
+			Expect(t).
+			Status(http.StatusOK).
+			End()
+
 		finish <- struct{}{}
 	}()
 	<-finish

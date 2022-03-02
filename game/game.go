@@ -11,8 +11,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-type GameList []Game
-
 type GameState int
 
 type Game struct {
@@ -26,8 +24,8 @@ type Game struct {
 }
 
 type participant struct {
-	player player.Player
-	board  board.Board
+	Player player.Player `json:"player"`
+	board  board.Board   `json:"-"`
 }
 
 const (
@@ -49,7 +47,7 @@ const (
 
 const ValidGameIDRegex = "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
 
-var AllGames GameList
+var AllGames []Game
 
 var GameStateMap = map[GameState]string{
 	0: "created",
@@ -61,7 +59,7 @@ var GameStateMap = map[GameState]string{
 }
 
 func (p participant) String() string {
-	return p.player.Name
+	return p.Player.Name
 }
 
 func (p participant) MarshalJSON() ([]byte, error) {
@@ -75,6 +73,20 @@ func GetByUUID(uuid string) (Game, error) {
 		}
 	}
 	return Game{}, fmt.Errorf("no game found for uuid %s", uuid)
+}
+
+func DeleteByUUID(uuid string) error {
+	index := -1
+	for i, g := range AllGames {
+		if g.ID.String() == uuid {
+			index = i
+		}
+	}
+	if index == -1 {
+		return fmt.Errorf("no game found for uuid %s", uuid)
+	}
+	AllGames = append(AllGames[:index], AllGames[index+1:]...)
+	return nil
 }
 
 func (g GameState) String() string {
@@ -110,6 +122,11 @@ func (g *Game) AddParticipant(player player.Player) error {
 	if g.MaxParticipants <= len(g.Participants) {
 		return fmt.Errorf("game with id %s has reached max participants (%d/%d)", g.ID, len(g.Participants), g.MaxParticipants)
 	}
+	for _, p := range g.ListParticipants() {
+		if p == player.Name {
+			return fmt.Errorf("player %s is already participant of game with id %s", p, g.ID)
+		}
+	}
 	g.Participants = append(g.Participants, participant{
 		player,
 		board.NewBoard(g.BoardParameters),
@@ -119,7 +136,7 @@ func (g *Game) AddParticipant(player player.Player) error {
 
 func (g *Game) RemoveParticipant(player player.Player) error {
 	for i, p := range g.Participants {
-		if p.player.Name == player.Name {
+		if p.Player.Name == player.Name {
 			g.Participants = append(g.Participants[:i], g.Participants[i+1:]...)
 			return nil
 		}

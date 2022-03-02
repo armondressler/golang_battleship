@@ -11,6 +11,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/golang-jwt/jwt"
+	"github.com/gorilla/csrf"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -42,19 +43,22 @@ func getPlayerFromContext(r *http.Request) (player.Player, error) {
 
 func Login(w http.ResponseWriter, r *http.Request, jwtsigningkey []byte) {
 	var b LoginBody
-	decoder := json.NewDecoder(r.Body)
-	err := decoder.Decode(&b)
-	if err != nil {
-		w.WriteHeader(http.StatusUnauthorized)
-		w.Write([]byte(err.Error()))
-		return
+	b.Playername = r.PostFormValue("playername")
+	b.Password = r.PostFormValue("password")
+	if len(b.Playername) == 0 && len(b.Password) == 0 {
+		decoder := json.NewDecoder(r.Body)
+		err := decoder.Decode(&b)
+		if err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte(err.Error()))
+			return
+		}
 	}
 	p, err := player.GetByName(b.Playername)
 	if err != nil {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
-
 	if err := bcrypt.CompareHashAndPassword([]byte(p.PasswordHash), []byte(b.Password)); err != nil {
 		w.WriteHeader(http.StatusUnauthorized)
 		return
@@ -72,9 +76,9 @@ func Login(w http.ResponseWriter, r *http.Request, jwtsigningkey []byte) {
 		HttpOnly: true,
 		Expires:  time.Now().AddDate(1, 0, 0),
 	}
-	log.Info(c)
 	http.SetCookie(w, &c)
-	w.WriteHeader(http.StatusAccepted)
+	w.Header().Set("X-CSRF-Token", csrf.Token(r))
+	w.WriteHeader(http.StatusOK)
 }
 
 func (jwtm JWTMiddleware) CheckJWT(h http.Handler) http.Handler {

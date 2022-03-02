@@ -34,7 +34,7 @@ func TestGenerateJwtSigningKey(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := cmd.GenerateJwtSigningKey(tt.args.keysize)
+			got, err := cmd.GenerateRandomKey(tt.args.keysize)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("GenerateJwtSigningKey() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -137,7 +137,7 @@ func TestLogin(t *testing.T) {
 			Post("http://127.0.0.1:8080/login").
 			Body("{\"playername\":\"Rudolf\",\"password\":\"passwordrudolf\"}").
 			Expect(t).
-			Status(http.StatusAccepted).
+			Status(http.StatusOK).
 			CookiePresent(JWT_COOKIE_NAME).
 			End().Response
 

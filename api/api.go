@@ -8,6 +8,7 @@ import (
 	"golang_battleship/player"
 	"net/http"
 
+	"github.com/gorilla/csrf"
 	"github.com/gorilla/mux"
 	ws "github.com/gorilla/websocket"
 	log "github.com/sirupsen/logrus"
@@ -19,110 +20,63 @@ const (
 	PASSWORD_REHASH_COUNT = 10
 )
 
-type Playername string
-
-type RegisterPlayerBody struct {
-	Playername string `json:"name"`
-	Password   string `json:"password"`
-}
-
-type CreateGameBody struct {
-	BoardsizeX  int    `json:"boardsizeX,omitempty"`
-	BoardsizeY  int    `json:"boardsizeY,omitempty"`
-	Maxships    int    `json:"maxships,omitempty"`
-	Maxplayers  int    `json:"maxplayers,omitempty"`
-	Description string `json:"description,omitempty"`
-}
-
-type ScoreboardEntry struct {
-	Name   string `json:"name"`
-	Wins   int    `json:"wins"`
-	Losses int    `json:"losses"`
-}
-
-type ScoreboardBody []ScoreboardEntry
-
 func Version(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	retval, _ := json.Marshal(VERSION)
-	w.Write(retval)
+	JSONResponse(w, http.StatusOK, VersionResponseBody{Version: VERSION})
 }
 
 func RegisterPlayer(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	var b RegisterPlayerBody
 	if err := decoder.Decode(&b); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
+		JSONErrorResponse(w, http.StatusBadRequest, "Failed to decode JSON body")
 		return
 	}
-	if _, err := player.NewPlayer(b.Playername, b.Password); err != nil {
-		resp, _ := json.Marshal(err)
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write(resp)
+	p, err := player.NewPlayer(b.Playername, b.Password)
+	if err != nil {
+		JSONErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("Failed to create new player, %s", err.Error()))
 		return
 	}
 	log.Info(fmt.Printf("registered new player %s", b.Playername))
-	w.WriteHeader(http.StatusOK)
+	JSONResponse(w, http.StatusOK, RegisterPlayerResponseBody{ID: p.ID.String()})
 }
 
-func JoinGame(w http.ResponseWriter, r *http.Request) {
-	p, err := getPlayerFromContext(r)
+func JoinGame(w http.ResponseWriter, r *http.Request, p *player.Player, g *game.Game) {
+	err := g.AddParticipant(*p)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
+		JSONErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("Failed to join game with id %s, %s", g.ID, err))
 		return
 	}
-	rvars := mux.Vars(r)
-	gameID, ok := rvars["id"]
-	if !ok {
-		w.Write([]byte("no game id provided in request path"))
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	g, err := game.GetByUUID(gameID)
-	if err != nil {
-		w.Write([]byte(fmt.Sprintf("no game found for id %s", gameID)))
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-	err = g.AddParticipant(p)
-	if err != nil {
-		w.Write([]byte(err.Error()))
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	w.WriteHeader(http.StatusOK)
+	JSONResponse(w, http.StatusOK, JoinGameResponseBody{ID: g.ID.String()})
 }
 
-func LeaveGame(w http.ResponseWriter, r *http.Request) {
-
+func LeaveGame(w http.ResponseWriter, r *http.Request, p *player.Player, g *game.Game) {
+	err := g.RemoveParticipant(*p)
+	if err != nil {
+		JSONErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("Failed to leave game with id %s, %s", g.ID, err))
+		return
+	}
+	JSONResponse(w, http.StatusOK, LeaveGameResponseBody{ID: g.ID.String()})
 }
 
 func CreateGame(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
 	decoder := json.NewDecoder(r.Body)
-	var c CreateGameBody
+	c := CreateGameBody{
+		BoardsizeX:  game.DefaultBoardsizeX,
+		BoardsizeY:  game.DefaultBoardsizeY,
+		Maxships:    game.DefaultMaxships,
+		Maxplayers:  game.DefaultMaxParticipants,
+		Description: game.DefaultDescription,
+	}
 	if err := decoder.Decode(&c); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
+		JSONErrorResponse(w, http.StatusBadRequest, "Failed to parse request")
 		return
 	}
 	g, err := game.NewGame(c.BoardsizeX, c.BoardsizeY, c.Maxships, c.Description, c.Maxplayers)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(err.Error()))
+		JSONErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("Failed to create new game, %s", err))
 		return
 	}
-	body := make(map[string]string)
-	body["id"] = g.ID.String()
-	retval, err := json.Marshal(body)
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(err.Error()))
-	}
-	w.Write(retval)
-}
-
-func DeleteGame(w http.ResponseWriter, r *http.Request) {
-
+	JSONResponse(w, http.StatusOK, CreateGameResponseBody{ID: g.ID.String()})
 }
 
 func ListGames(w http.ResponseWriter, r *http.Request) {
@@ -130,30 +84,16 @@ func ListGames(w http.ResponseWriter, r *http.Request) {
 	for _, g := range game.AllGames {
 		games[g.ID.String()] = g
 	}
-	if retval, err := json.Marshal(games); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(err.Error()))
-		return
-	} else {
-		w.Header().Set("Content-Type", "application/json")
-		w.Write(retval)
-	}
+	JSONResponse(w, http.StatusOK, games)
 }
 
 func Scoreboard(w http.ResponseWriter, r *http.Request) {
-	scoreboard := ScoreboardBody{}
+	scoreboard := ScoreboardResponseBody{}
 	for _, p := range player.AllPlayersList {
 		entry := ScoreboardEntry{Name: p.Name, Wins: p.Wins, Losses: p.Losses}
 		scoreboard = append(scoreboard, entry)
 	}
-	log.Info(scoreboard)
-	retval, err := json.Marshal(scoreboard)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.Write(retval)
+	JSONResponse(w, http.StatusOK, scoreboard)
 }
 
 func echo(w http.ResponseWriter, r *http.Request) {
@@ -180,27 +120,76 @@ func echo(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-type JWTMiddleware struct {
-	jwtSigningKey []byte
-	loginHandler  func(w http.ResponseWriter, r *http.Request, jwtSigningKey []byte)
+func DeleteGame(w http.ResponseWriter, r *http.Request, p *player.Player, g *game.Game) {
+	err := game.DeleteByUUID(g.ID.String())
+	if err != nil {
+		JSONErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Failed to delete game with id %s, %s", g.ID, err))
+		return
+	}
+	w.WriteHeader(http.StatusOK)
 }
 
-func (jwtm JWTMiddleware) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	jwtm.loginHandler(w, r, jwtm.jwtSigningKey)
+func JSONErrorResponse(w http.ResponseWriter, httpStatus int, message string) {
+	e := ErrorResponseBody{
+		Message: message,
+	}
+	body, _ := json.Marshal(e)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(httpStatus)
+	if len(message) > 0 {
+		w.Write(body)
+	}
 }
 
-func Serve(addr string, port int, jwtSigningKey []byte) {
+func JSONResponse(w http.ResponseWriter, httpStatus int, content interface{}) {
+	body, err := json.Marshal(content)
+	if err != nil {
+		JSONErrorResponse(w, http.StatusInternalServerError, "")
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(httpStatus)
+	w.Write(body)
+}
+
+func Serve(addr string, port int, jwtSigningKey []byte, csrfAuthKey []byte) {
 	jwtm := JWTMiddleware{jwtSigningKey: jwtSigningKey, loginHandler: Login}
+	csrfm := csrf.Protect(csrfAuthKey)
 	defaultRouter := mux.NewRouter()
+
 	needsAuthRouter := defaultRouter.NewRoute().Subrouter()
 	needsAuthRouter.Use(jwtm.CheckJWT)
+	needsAuthRouter.Use(csrfm)
+
 	pw, _ := hashPassword("armon", PASSWORD_REHASH_COUNT)
 	player.NewPlayer("armon", pw)
-	defaultRouter.Path("/login").Methods("POST").Handler(jwtm)
 
+	defaultRouter.Path("/").Methods("GET").Handler(http.RedirectHandler("/static/html/login.html", http.StatusPermanentRedirect))
+	defaultRouter.Path("/login").Methods("POST").Handler(jwtm)
+	defaultRouter.Path("/version").Methods("GET").HandlerFunc(Version)
+	defaultRouter.PathPrefix("/static").Methods("GET").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))))
 	needsAuthRouter.Path("/players").Methods("POST").HandlerFunc(RegisterPlayer)
 	needsAuthRouter.Path("/players").Methods("GET").HandlerFunc(Scoreboard)
 	needsAuthRouter.Path("/games").Methods("GET").HandlerFunc(ListGames)
-	needsAuthRouter.Path(fmt.Sprintf("/games/{id:%s}/join", game.ValidGameIDRegex)).HandlerFunc(JoinGame)
+	needsAuthRouter.Path("/games").Methods("POST").HandlerFunc(CreateGame)
+
+	needsAuthRouter.Path(fmt.Sprintf("/games/{id:%s}", game.ValidGameIDRegex)).Methods("DELETE").Handler(
+		gameValidatorHandler{
+			gameValidator:   gameValidator,
+			playerValidator: playerValidator,
+			handler:         DeleteGame,
+		})
+	needsAuthRouter.Path(fmt.Sprintf("/games/{id:%s}/join", game.ValidGameIDRegex)).Methods("GET").Handler(
+		gameValidatorHandler{
+			gameValidator:   gameValidator,
+			playerValidator: playerValidator,
+			handler:         JoinGame,
+		})
+	needsAuthRouter.Path(fmt.Sprintf("/games/{id:%s}/leave", game.ValidGameIDRegex)).Methods("GET").Handler(
+		gameValidatorHandler{
+			gameValidator:   gameValidator,
+			playerValidator: playerValidator,
+			handler:         LeaveGame,
+		})
+
 	log.Fatal(http.ListenAndServe(addr+":"+fmt.Sprint(port), defaultRouter))
 }

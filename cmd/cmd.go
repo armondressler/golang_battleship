@@ -16,6 +16,7 @@ type cmdFlags struct {
 	Loglevel      int
 	Server        bool
 	JwtSigningKey []byte
+	CSRFAuthKey   []byte
 }
 
 func validateLoglevel(loglevel int) error {
@@ -45,15 +46,15 @@ func setLogger(loglevel int) {
 	log.SetLevel(log.Level(loglevel + 2)) //skip panic and fatal level, start at error
 }
 
-func GetJwtSigningKeyFromEnv(envkey string) ([]byte, error) {
+func GetKeyFromEnv(envkey string) ([]byte, error) {
 	e := []byte(os.Getenv(envkey))
 	if len(e) == 0 {
-		return []byte{}, fmt.Errorf("failed to get jwt signing key from env var %s, either empty or unset", envkey)
+		return []byte{}, fmt.Errorf("failed to get value from env var %s, either empty or unset", envkey)
 	}
 	return e, nil
 }
 
-func GenerateJwtSigningKey(keysize int) ([]byte, error) {
+func GenerateRandomKey(keysize int) ([]byte, error) {
 	b := make([]byte, keysize)
 	_, err := rand.Read(b)
 	if err != nil {
@@ -68,6 +69,7 @@ func ParseCmdFlags() cmdFlags {
 	var loglevel int
 	var server bool
 	var jwtSigningKey []byte
+	var csrfAuthKey []byte
 
 	flag.StringVar(&host, "host", "0.0.0.0", "Server address (or interface for server mode)")
 	flag.IntVar(&port, "port", 80, "Port to connect to (or to listen on for server mode)")
@@ -75,14 +77,23 @@ func ParseCmdFlags() cmdFlags {
 	flag.BoolVar(&server, "server", false, "Run as server")
 	flag.Parse()
 	setLogger(loglevel)
-	jwtSigningKey, err := GetJwtSigningKeyFromEnv("BATTLESHIP_JWTSIGNINGKEY")
+	jwtSigningKey, err := GetKeyFromEnv("BATTLESHIP_JWTSIGNINGKEY")
 	if err != nil {
 		log.Warn(err)
-		jwtSigningKey, err = GenerateJwtSigningKey(32)
+		jwtSigningKey, err = GenerateRandomKey(32)
 		if err != nil {
 			panic(fmt.Errorf("failed to generate JWT signing key: %s", err))
 		}
 		log.Warn("generated JWT signing key: ", string(jwtSigningKey))
 	}
-	return cmdFlags{host, port, loglevel, server, jwtSigningKey}
+	csrfAuthKey, err = GetKeyFromEnv("BATTLESHIP_CSRFAUTHKEY")
+	if err != nil {
+		log.Warn(err)
+		csrfAuthKey, err = GenerateRandomKey(32)
+		if err != nil {
+			panic(fmt.Errorf("failed to generate CSRF auth key: %s", err))
+		}
+		log.Warn("generated CSRF auth key: ", string(csrfAuthKey))
+	}
+	return cmdFlags{host, port, loglevel, server, jwtSigningKey, csrfAuthKey}
 }

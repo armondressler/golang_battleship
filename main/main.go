@@ -7,9 +7,10 @@ import (
 )
 
 func main() {
+
 	configFlags := cmd.ParseCmdFlags()
 	if configFlags.Server {
-		api.Serve(configFlags.Host, configFlags.Port, configFlags.JwtSigningKey)
+		api.Serve(configFlags.Host, configFlags.Port, configFlags.JwtSigningKey, configFlags.CSRFAuthKey)
 	} else {
 		client.Connect(configFlags.Host, configFlags.Port)
 	}
