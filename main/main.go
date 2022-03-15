@@ -7,7 +7,6 @@ import (
 )
 
 func main() {
-
 	configFlags := cmd.ParseCmdFlags()
 	if configFlags.Server {
 		api.Serve(configFlags.Host, configFlags.Port, configFlags.JwtSigningKey, configFlags.CSRFAuthKey)

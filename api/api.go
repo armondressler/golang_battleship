@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 
 	"golang_battleship/game"
 	"golang_battleship/player"
@@ -88,10 +89,28 @@ func ListGames(w http.ResponseWriter, r *http.Request) {
 }
 
 func Scoreboard(w http.ResponseWriter, r *http.Request) {
+	rankingint := len(player.AllPlayersList)
+	if ranking := r.URL.Query().Get("ranking"); len(ranking) > 0 {
+		var err error
+		rankingint, err = strconv.Atoi(ranking)
+		if err != nil {
+			JSONErrorResponse(w, http.StatusBadRequest, "ranking must be an integer")
+			return
+		}
+	}
+
 	scoreboard := ScoreboardResponseBody{}
-	for _, p := range player.AllPlayersList {
+	bestof, err := player.AllPlayersList.BestOf(rankingint)
+	if err != nil {
+		JSONErrorResponse(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	for _, p := range bestof {
 		entry := ScoreboardEntry{Name: p.Name, Wins: p.Wins, Losses: p.Losses}
 		scoreboard = append(scoreboard, entry)
+		if rankingint == len(scoreboard) {
+			break
+		}
 	}
 	JSONResponse(w, http.StatusOK, scoreboard)
 }
@@ -157,16 +176,24 @@ func Serve(addr string, port int, jwtSigningKey []byte, csrfAuthKey []byte) {
 	defaultRouter := mux.NewRouter()
 
 	needsAuthRouter := defaultRouter.NewRoute().Subrouter()
-	needsAuthRouter.Use(jwtm.CheckJWT)
-	needsAuthRouter.Use(csrfm)
+	needsAuthRouter.Use(jwtm.CheckJWT, csrfm)
 
 	pw, _ := hashPassword("armon", PASSWORD_REHASH_COUNT)
 	player.NewPlayer("armon", pw)
 
-	defaultRouter.Path("/").Methods("GET").Handler(http.RedirectHandler("/static/html/login.html", http.StatusPermanentRedirect))
+	pw2, _ := hashPassword("rudolf", PASSWORD_REHASH_COUNT)
+	x, _ := player.NewPlayer("rudolf", pw2)
+	x.ScoreWin()
+	x.ScoreWin()
+
+	defaultRouter.Path("/").Methods("GET").Handler(http.RedirectHandler("/login.html", http.StatusPermanentRedirect))
 	defaultRouter.Path("/login").Methods("POST").Handler(jwtm)
 	defaultRouter.Path("/version").Methods("GET").HandlerFunc(Version)
-	defaultRouter.PathPrefix("/static").Methods("GET").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))))
+	defaultRouter.Path("/{resource:[a-zA-Z0-9_\\-]+.html}").Methods("GET").Handler(http.FileServer(http.Dir("./static/html/")))
+	defaultRouter.Path("/{resource:[a-zA-Z0-9_\\-]+.css}").Methods("GET").Handler(http.FileServer(http.Dir("./static/stylesheets/")))
+	defaultRouter.Path("/{resource:[a-zA-Z0-9_\\-]+.js}").Methods("GET").Handler(http.FileServer(http.Dir("./static/js/")))
+	defaultRouter.Path("/{resource:[a-zA-Z0-9_\\-]+.(?:ico|png|jpg|jpeg)}").Methods("GET").Handler(http.FileServer(http.Dir("./static/images/")))
+
 	needsAuthRouter.Path("/players").Methods("POST").HandlerFunc(RegisterPlayer)
 	needsAuthRouter.Path("/players").Methods("GET").HandlerFunc(Scoreboard)
 	needsAuthRouter.Path("/games").Methods("GET").HandlerFunc(ListGames)

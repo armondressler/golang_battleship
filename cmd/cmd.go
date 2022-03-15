@@ -84,7 +84,7 @@ func ParseCmdFlags() cmdFlags {
 		if err != nil {
 			panic(fmt.Errorf("failed to generate JWT signing key: %s", err))
 		}
-		log.Warn("generated JWT signing key: ", string(jwtSigningKey))
+		log.Warn("generated JWT signing key: ", jwtSigningKey)
 	}
 	csrfAuthKey, err = GetKeyFromEnv("BATTLESHIP_CSRFAUTHKEY")
 	if err != nil {
@@ -93,7 +93,7 @@ func ParseCmdFlags() cmdFlags {
 		if err != nil {
 			panic(fmt.Errorf("failed to generate CSRF auth key: %s", err))
 		}
-		log.Warn("generated CSRF auth key: ", string(csrfAuthKey))
+		log.Warn("generated CSRF auth key: ", csrfAuthKey)
 	}
 	return cmdFlags{host, port, loglevel, server, jwtSigningKey, csrfAuthKey}
 }

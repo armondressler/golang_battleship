@@ -78,7 +78,8 @@ func Login(w http.ResponseWriter, r *http.Request, jwtsigningkey []byte) {
 	}
 	http.SetCookie(w, &c)
 	w.Header().Set("X-CSRF-Token", csrf.Token(r))
-	w.WriteHeader(http.StatusOK)
+	http.Redirect(w, r, "/dashboard.html", http.StatusSeeOther)
+	//w.WriteHeader(http.StatusOK)
 }
 
 func (jwtm JWTMiddleware) CheckJWT(h http.Handler) http.Handler {

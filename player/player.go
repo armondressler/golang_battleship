@@ -34,6 +34,25 @@ func (l PlayerList) Swap(i, j int) {
 	l[i], l[j] = l[j], l[i]
 }
 
+func (l PlayerList) BestOf(ranking int) ([]*Player, error) {
+	//[p1,p2,p3,p4,p5]
+	if ranking < 0 {
+		ranking *= -1
+		retval := make([]*Player, ranking)
+		if ranking >= len(l) {
+			return nil, fmt.Errorf("cannot get best of %v on current amount of registered players (%v)", ranking, len(l))
+		}
+		copy(retval, AllPlayersList[:ranking])
+		return retval, nil
+	}
+	retval := make([]*Player, ranking)
+	k := len(AllPlayersList)
+	for i := 0; i < ranking; i++ {
+		retval[i] = AllPlayersList[k-i-1]
+	}
+	return retval, nil
+}
+
 var AllPlayersMap = make(PlayerMap)
 
 var AllPlayersList PlayerList
