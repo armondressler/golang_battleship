@@ -50,20 +50,34 @@ main {
   border-top-right-radius: 0;
 }
 
-nav {
+.form-signin img {
+  max-width: 100%;
+  object-fit: scale-down;
+}
+
+header nav {
   max-height: 5vh;
 }
 
-nav a {
+header nav a {
   max-height: inherit;
 }
 
-nav a img{
+header nav a img{
   max-height: inherit;
 }
 
-.nav-link:hover {
+header .nav-link:hover {
   background-color: #8e8e8e;
   transform: scale(1.4);
   transition: transform .2s;
+}
+
+
+.nav-pills .nav-link.active { 
+  background-color: #3980d1 ; 
+}
+
+.nav-pills .nav-link:hover { 
+  background-color: #c5ddf8 ; 
 }

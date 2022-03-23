@@ -71,6 +71,8 @@ func ParseCmdFlags() cmdFlags {
 	var jwtSigningKey []byte
 	var csrfAuthKey []byte
 
+
+	
 	flag.StringVar(&host, "host", "0.0.0.0", "Server address (or interface for server mode)")
 	flag.IntVar(&port, "port", 80, "Port to connect to (or to listen on for server mode)")
 	flag.IntVar(&loglevel, "loglevel", 0, "Log verbosity (0 (error) - 3 (debug)")

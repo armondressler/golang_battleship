@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"time"
 
+	"golang_battleship/board"
 	"golang_battleship/game"
 	"golang_battleship/player"
 	"net/http"
@@ -62,17 +64,19 @@ func LeaveGame(w http.ResponseWriter, r *http.Request, p *player.Player, g *game
 func CreateGame(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	c := CreateGameBody{
-		BoardsizeX:  game.DefaultBoardsizeX,
-		BoardsizeY:  game.DefaultBoardsizeY,
-		Maxships:    game.DefaultMaxships,
-		Maxplayers:  game.DefaultMaxParticipants,
+		BoardParameters: board.BoardParameters{
+			SizeX:    game.DefaultBoardsizeX,
+			SizeY:    game.DefaultBoardsizeY,
+			MaxShips: game.DefaultMaxships,
+		},
+		MaxPlayers:  game.DefaultMaxParticipants,
 		Description: game.DefaultDescription,
 	}
 	if err := decoder.Decode(&c); err != nil {
 		JSONErrorResponse(w, http.StatusBadRequest, "Failed to parse request")
 		return
 	}
-	g, err := game.NewGame(c.BoardsizeX, c.BoardsizeY, c.Maxships, c.Description, c.Maxplayers)
+	g, err := game.NewGame(c.BoardParameters.SizeX, c.BoardParameters.SizeY, c.BoardParameters.MaxShips, c.Description, c.MaxPlayers)
 	if err != nil {
 		JSONErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("Failed to create new game, %s", err))
 		return
@@ -82,10 +86,40 @@ func CreateGame(w http.ResponseWriter, r *http.Request) {
 
 func ListGames(w http.ResponseWriter, r *http.Request) {
 	games := make(map[string]game.Game)
+	if state := r.URL.Query().Get("state"); len(state) > 0 {
+		stateint, ok := game.GameStateMap[state]
+		if !ok {
+			JSONErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("invalid game state %s", state))
+			return
+		}
+		for _, g := range game.AllGames {
+			if g.State == stateint {
+				games[g.ID.String()] = *g
+			}
+		}
+		JSONResponse(w, http.StatusOK, games)
+		return
+	}
+
 	for _, g := range game.AllGames {
-		games[g.ID.String()] = g
+		games[g.ID.String()] = *g
 	}
 	JSONResponse(w, http.StatusOK, games)
+}
+
+func GetGame(w http.ResponseWriter, r *http.Request, p *player.Player, g *game.Game) {
+	game := GetGameResponseBody{
+		ID:           g.ID.String(),
+		State:        g.State,
+		CreationDate: g.CreationDate,
+		Participants: g.Participants,
+		CreateGameBody: CreateGameBody{
+			g.BoardParameters,
+			g.MaxParticipants,
+			g.Description,
+		},
+	}
+	JSONResponse(w, http.StatusOK, game)
 }
 
 func Scoreboard(w http.ResponseWriter, r *http.Request) {
@@ -98,7 +132,6 @@ func Scoreboard(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-
 	scoreboard := ScoreboardResponseBody{}
 	bestof, err := player.AllPlayersList.BestOf(rankingint)
 	if err != nil {
@@ -148,6 +181,17 @@ func DeleteGame(w http.ResponseWriter, r *http.Request, p *player.Player, g *gam
 	w.WriteHeader(http.StatusOK)
 }
 
+func logRouterPaths(router *mux.Router) {
+	router.Walk(func(route *mux.Route, router *mux.Router, ancestors []*mux.Route) error {
+		pathTemplate, err := route.GetPathTemplate()
+		methods, _ := route.GetMethods()
+		if err == nil {
+			log.Info("Added route: ", pathTemplate, " with methods: ", methods)
+		}
+		return nil
+	})
+}
+
 func JSONErrorResponse(w http.ResponseWriter, httpStatus int, message string) {
 	e := ErrorResponseBody{
 		Message: message,
@@ -186,6 +230,14 @@ func Serve(addr string, port int, jwtSigningKey []byte, csrfAuthKey []byte) {
 	x.ScoreWin()
 	x.ScoreWin()
 
+	g1, _ := game.NewGame(12, 12, 2, "testgame please ignore", 2, "armon", "rudolf")
+	log.Info("started game ", g1)
+	g2, _ := game.NewGame(12, 12, 2, "testgame2 please ignore", 2, "armon", "rudolf")
+	log.Info("started game ", g2)
+	g3, _ := game.NewGame(12, 12, 2, "testgame2 please ignore", 2, "armon", "rudolf")
+	g3.State = 2
+	log.Info("started game ", g3)
+
 	defaultRouter.Path("/").Methods("GET").Handler(http.RedirectHandler("/login.html", http.StatusPermanentRedirect))
 	defaultRouter.Path("/login").Methods("POST").Handler(jwtm)
 	defaultRouter.Path("/version").Methods("GET").HandlerFunc(Version)
@@ -194,11 +246,16 @@ func Serve(addr string, port int, jwtSigningKey []byte, csrfAuthKey []byte) {
 	defaultRouter.Path("/{resource:[a-zA-Z0-9_\\-]+.js}").Methods("GET").Handler(http.FileServer(http.Dir("./static/js/")))
 	defaultRouter.Path("/{resource:[a-zA-Z0-9_\\-]+.(?:ico|png|jpg|jpeg)}").Methods("GET").Handler(http.FileServer(http.Dir("./static/images/")))
 
-	needsAuthRouter.Path("/players").Methods("POST").HandlerFunc(RegisterPlayer)
 	needsAuthRouter.Path("/players").Methods("GET").HandlerFunc(Scoreboard)
+	needsAuthRouter.Path("/players").Methods("POST").HandlerFunc(RegisterPlayer)
 	needsAuthRouter.Path("/games").Methods("GET").HandlerFunc(ListGames)
 	needsAuthRouter.Path("/games").Methods("POST").HandlerFunc(CreateGame)
-
+	needsAuthRouter.Path(fmt.Sprintf("/games/{id:%s}", game.ValidGameIDRegex)).Methods("GET").Handler(
+		gameValidatorHandler{
+			gameValidator:   gameValidator,
+			playerValidator: playerValidator,
+			handler:         GetGame,
+		})
 	needsAuthRouter.Path(fmt.Sprintf("/games/{id:%s}", game.ValidGameIDRegex)).Methods("DELETE").Handler(
 		gameValidatorHandler{
 			gameValidator:   gameValidator,
@@ -218,5 +275,17 @@ func Serve(addr string, port int, jwtSigningKey []byte, csrfAuthKey []byte) {
 			handler:         LeaveGame,
 		})
 
-	log.Fatal(http.ListenAndServe(addr+":"+fmt.Sprint(port), defaultRouter))
+	routers := []*mux.Router{defaultRouter, needsAuthRouter}
+	for _, router := range routers {
+		logRouterPaths(router)
+	}
+
+	srv := http.Server{
+		Addr:              addr + ":" + fmt.Sprint(port),
+		Handler:           defaultRouter,
+		WriteTimeout:      time.Second * 15,
+		ReadHeaderTimeout: time.Second * 15,
+		IdleTimeout:       time.Second * 30,
+	}
+	log.Fatal(srv.ListenAndServe())
 }

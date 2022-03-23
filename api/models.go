@@ -1,5 +1,11 @@
 package api
 
+import (
+	"golang_battleship/board"
+	"golang_battleship/game"
+	"time"
+)
+
 type ErrorResponseBody struct {
 	Message string `json:"message"`
 }
@@ -20,11 +26,17 @@ type RegisterPlayerResponseBody struct {
 }
 
 type CreateGameBody struct {
-	BoardsizeX  int    `json:"boardsizeX,omitempty"`
-	BoardsizeY  int    `json:"boardsizeY,omitempty"`
-	Maxships    int    `json:"maxships,omitempty"`
-	Maxplayers  int    `json:"maxplayers,omitempty"`
-	Description string `json:"description,omitempty"`
+	BoardParameters board.BoardParameters `json:"board_parameters"`
+	MaxPlayers      int                   `json:"max_players,omitempty"`
+	Description     string                `json:"description,omitempty"`
+}
+
+type GetGameResponseBody struct {
+	ID           string             `json:"id"`
+	State        game.GameState     `json:"state"`
+	CreationDate time.Time          `json:"creation_date"`
+	Participants []game.Participant `json:"participants"`
+	CreateGameBody
 }
 
 type CreateGameResponseBody struct {

@@ -35,7 +35,6 @@ func (l PlayerList) Swap(i, j int) {
 }
 
 func (l PlayerList) BestOf(ranking int) ([]*Player, error) {
-	//[p1,p2,p3,p4,p5]
 	if ranking < 0 {
 		ranking *= -1
 		retval := make([]*Player, ranking)

@@ -2,13 +2,12 @@ export default {
     props: {
       ranking: Number
     },
-    created() {
-      
+    created() {   
         this.fetchData()
     },
     data() {
       return {
-        scoreboard: null,
+        scoreboard: [],
         loading: true,
         error: false,
         loading_template: ``,
@@ -29,14 +28,14 @@ export default {
             if (!scoreboard_response.ok) {
               this.error = true;
               this.loading = false;
+            } else {
+              this.scoreboard = await scoreboard_response.json();
             }
-            this.scoreboard = await scoreboard_response.json();
-            this.loading = false;
           } catch (err) {
             console.log("Failed to fetch scoreboard " + err);
-            this.loading = false;
             this.error = true;
           }
+          this.loading = false;
         },
     },
     template: `
@@ -60,6 +59,9 @@ export default {
             <th scope="col">Losses</th>
           </tr>
         </thead>
+        <div class="alert alert-secondary" role="alert" v-if="Object.keys(scoreboard).length == 0">
+          No players found.
+        </div>
         <tbody>
           <tr v-for="player in scoreboard">
             <th scope="row">{{ player.name }}</th>

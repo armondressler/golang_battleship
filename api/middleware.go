@@ -12,6 +12,7 @@ import (
 func playerValidator(w http.ResponseWriter, r *http.Request) (*player.Player, error) {
 	p, err := getPlayerFromContext(r)
 	if err != nil {
+		JSONErrorResponse(w, http.StatusBadRequest, err.Error())
 		return nil, err
 	}
 	return &p, nil
@@ -21,15 +22,15 @@ func gameValidator(w http.ResponseWriter, r *http.Request) (*game.Game, error) {
 	rvars := mux.Vars(r)
 	gameID, ok := rvars["id"]
 	if !ok {
-		w.WriteHeader(http.StatusBadRequest)
+		JSONErrorResponse(w, http.StatusBadRequest, "")
 		return nil, fmt.Errorf("no game id provided in request path")
 	}
 	g, err := game.GetByUUID(gameID)
 	if err != nil {
-		w.WriteHeader(http.StatusNotFound)
+		JSONErrorResponse(w, http.StatusNotFound, err.Error())
 		return nil, fmt.Errorf("no game found for id %s", gameID)
 	}
-	return &g, nil
+	return g, nil
 }
 
 type JWTMiddleware struct {
@@ -50,11 +51,11 @@ type gameValidatorHandler struct {
 func (gv gameValidatorHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	p, err := gv.playerValidator(w, r)
 	if err != nil {
-		JSONErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("Cannot determine player identity, %s", err.Error()))
+		return
 	}
 	g, err := gv.gameValidator(w, r)
 	if err != nil {
-		JSONErrorResponse(w, http.StatusBadRequest, err.Error())
+		return
 	}
 	gv.handler(w, r, p, g)
 }

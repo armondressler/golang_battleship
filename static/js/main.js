@@ -1,9 +1,11 @@
 import Scoreboard from './scoreboard.js'
 import Version from './version.js'
+import Gamelist from './gamelist.js'
 
 Vue.createApp({
   components: {
     Scoreboard,
-    Version
+    Version,
+    Gamelist
   },
 }).mount('#main')

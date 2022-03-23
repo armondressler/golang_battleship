@@ -89,7 +89,7 @@ func (jwtm JWTMiddleware) CheckJWT(h http.Handler) http.Handler {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
-		log.Info(fmt.Sprintf("Checking token %s from cookie %s", c.Value, c.Name))
+		log.Debug(fmt.Sprintf("Checking token %s from cookie %s", c.Value, c.Name))
 		t, err := jwt.ParseWithClaims(c.Value, &jwt.StandardClaims{}, func(token *jwt.Token) (interface{}, error) {
 			return jwtm.jwtSigningKey, nil
 		})
