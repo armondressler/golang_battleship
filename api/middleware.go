@@ -18,6 +18,20 @@ func playerValidator(w http.ResponseWriter, r *http.Request) (*player.Player, er
 	return &p, nil
 }
 
+func jwtBlacklistValidator(w http.ResponseWriter, r *http.Request) (string, int64, error) {
+	jwtID, err := getJwtIDFromContext(r)
+	if err != nil {
+		JSONErrorResponse(w, http.StatusBadRequest, err.Error())
+		return "", 0, err
+	}
+	jwtExpiry, err := getJwtExpiryFromContext(r)
+	if err != nil {
+		JSONErrorResponse(w, http.StatusBadRequest, err.Error())
+		return "", 0, err
+	}
+	return jwtID, jwtExpiry, nil
+}
+
 func gameValidator(w http.ResponseWriter, r *http.Request) (*game.Game, error) {
 	rvars := mux.Vars(r)
 	gameID, ok := rvars["id"]
@@ -35,6 +49,7 @@ func gameValidator(w http.ResponseWriter, r *http.Request) (*game.Game, error) {
 
 type JWTMiddleware struct {
 	jwtSigningKey []byte
+	jwtCookieName string
 	loginHandler  func(w http.ResponseWriter, r *http.Request, jwtSigningKey []byte)
 }
 
@@ -58,4 +73,17 @@ func (gv gameValidatorHandler) ServeHTTP(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	gv.handler(w, r, p, g)
+}
+
+type logoutHandler struct {
+	jwtBlacklistValidator func(w http.ResponseWriter, r *http.Request) (string, int64, error)
+	handler               func(w http.ResponseWriter, r *http.Request, jwtID string, expiry int64)
+}
+
+func (l logoutHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	jwtID, jwtExpiry, err := l.jwtBlacklistValidator(w, r)
+	if err != nil {
+		return
+	}
+	l.handler(w, r, jwtID, jwtExpiry)
 }

@@ -215,7 +215,7 @@ func JSONResponse(w http.ResponseWriter, httpStatus int, content interface{}) {
 }
 
 func Serve(addr string, port int, jwtSigningKey []byte, csrfAuthKey []byte) {
-	jwtm := JWTMiddleware{jwtSigningKey: jwtSigningKey, loginHandler: Login}
+	jwtm := JWTMiddleware{jwtSigningKey: jwtSigningKey, jwtCookieName: JWT_COOKIE_NAME, loginHandler: Login}
 	csrfm := csrf.Protect(csrfAuthKey)
 	defaultRouter := mux.NewRouter()
 
@@ -273,6 +273,12 @@ func Serve(addr string, port int, jwtSigningKey []byte, csrfAuthKey []byte) {
 			gameValidator:   gameValidator,
 			playerValidator: playerValidator,
 			handler:         LeaveGame,
+		})
+
+	needsAuthRouter.Path("/logout").Methods("GET").Handler(
+		logoutHandler{
+			jwtBlacklistValidator: jwtBlacklistValidator,
+			handler:               Logout,
 		})
 
 	routers := []*mux.Router{defaultRouter, needsAuthRouter}

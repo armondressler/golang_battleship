@@ -11,13 +11,42 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/golang-jwt/jwt"
+	"github.com/google/uuid"
 	"github.com/gorilla/csrf"
 	log "github.com/sirupsen/logrus"
 )
 
+type battleshipContextKey string
+
+type jwtBlacklist map[string]int64
+
+var JWTBlacklist = jwtBlacklist{}
+
 type LoginBody struct {
 	Playername string `json:"playername"`
 	Password   string `json:"password"`
+}
+
+func (j *jwtBlacklist) Blacklist(jwtID string, expiry int64) {
+	i := *j //not sure why this can't be done in one line
+	i[jwtID] = expiry
+}
+
+func (j *jwtBlacklist) isBlacklisted(jwtID string) bool {
+	i := *j
+	if _, ok := i[jwtID]; !ok {
+		return false
+	}
+	return true
+}
+
+func (j *jwtBlacklist) PurgeExpiredTokens() {
+	now := time.Now().Unix()
+	for id, expiry := range *j {
+		if expiry < now {
+			delete(*j, id)
+		}
+	}
 }
 
 func hashPassword(password string, rehashCount int) (string, error) {
@@ -27,8 +56,10 @@ func hashPassword(password string, rehashCount int) (string, error) {
 
 func createToken(signingKey []byte, user string, expiresInSeconds int) (string, error) {
 	t := jwt.New(jwt.GetSigningMethod("HS256"))
+	jwtID := uuid.New()
 	t.Claims = &jwt.StandardClaims{
 		ExpiresAt: time.Now().Add(time.Second * time.Duration(expiresInSeconds)).Unix(),
+		Id:        jwtID.String(),
 		Subject:   user,
 	}
 	s, err := t.SignedString(signingKey)
@@ -36,9 +67,34 @@ func createToken(signingKey []byte, user string, expiresInSeconds int) (string, 
 }
 
 func getPlayerFromContext(r *http.Request) (player.Player, error) {
-	var playernameKey Playername = "playername"
+	var playernameKey battleshipContextKey = "jwtPlayername"
 	c := r.Context()
 	return player.GetByName(c.Value(playernameKey).(string))
+}
+
+func getJwtExpiryFromContext(r *http.Request) (int64, error) {
+	var expiryKey battleshipContextKey = "jwtExpiry"
+	c := r.Context()
+	v, ok := c.Value(expiryKey).(int64)
+	if !ok {
+		return 0, fmt.Errorf("jwt payload key jwtExpiry missing in context")
+	}
+	return v, nil
+}
+
+func getJwtIDFromContext(r *http.Request) (string, error) {
+	var jwtIDKey battleshipContextKey = "jwtID"
+	c := r.Context()
+	v, ok := c.Value(jwtIDKey).(string)
+	if !ok {
+		return "", fmt.Errorf("jwt payload key jwtID missing in context")
+	}
+	return v, nil
+}
+
+func Logout(w http.ResponseWriter, r *http.Request, jwtID string, jwtExpiry int64) {
+	JWTBlacklist.Blacklist(jwtID, jwtExpiry)
+	http.Redirect(w, r, "/login.html", http.StatusSeeOther)
 }
 
 func Login(w http.ResponseWriter, r *http.Request, jwtsigningkey []byte) {
@@ -79,17 +135,15 @@ func Login(w http.ResponseWriter, r *http.Request, jwtsigningkey []byte) {
 	http.SetCookie(w, &c)
 	w.Header().Set("X-CSRF-Token", csrf.Token(r))
 	http.Redirect(w, r, "/dashboard.html", http.StatusSeeOther)
-	//w.WriteHeader(http.StatusOK)
 }
 
 func (jwtm JWTMiddleware) CheckJWT(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		c, err := r.Cookie(JWT_COOKIE_NAME)
+		c, err := r.Cookie(jwtm.jwtCookieName)
 		if err != nil {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
-		log.Debug(fmt.Sprintf("Checking token %s from cookie %s", c.Value, c.Name))
 		t, err := jwt.ParseWithClaims(c.Value, &jwt.StandardClaims{}, func(token *jwt.Token) (interface{}, error) {
 			return jwtm.jwtSigningKey, nil
 		})
@@ -109,8 +163,14 @@ func (jwtm JWTMiddleware) CheckJWT(h http.Handler) http.Handler {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
-		var playernameKey Playername = "playername" //because context.WithValue told me so
-		ctx := context.WithValue(r.Context(), playernameKey, claims.Subject)
+		if JWTBlacklist.isBlacklisted(claims.Id) {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), battleshipContextKey("jwtPlayername"), claims.Subject)
+		ctx = context.WithValue(ctx, battleshipContextKey("jwtID"), claims.Id)
+		ctx = context.WithValue(ctx, battleshipContextKey("jwtExpiry"), claims.ExpiresAt)
 		h.ServeHTTP(w, r.Clone(ctx))
 	})
 }
